@@ -218,6 +218,20 @@ npm run dev
 
 ---
 
+### Step 4: Vercel Multi-Service Deployment
+VayuMitra is configured for Vercel Multi-Service Deployment via `vercel.json` in the root:
+* **Frontend Service:** Vite SPA served from `frontend/`
+* **Backend Service:** FastAPI API served from `backend/app/main.py`
+* **Routing Rewrites:** `/api/(.*)` routes directly to the FastAPI service; all other routes render the Vite frontend.
+* **Environment Variables in Vercel:** Add `GEMINI_API_KEY` in your Vercel Project Settings > Environment Variables (optional, application functions gracefully offline/without keys).
+
+Deploy with the Vercel CLI or Git integration:
+```bash
+vercel
+```
+
+---
+
 ## 🧪 Automated Testing & Code Quality Verification
 
 ### Run Backend Linting (Ruff)
