@@ -5,7 +5,9 @@ import { AqiBanner } from './components/AqiBanner';
 import { ActionPlanView } from './components/ActionPlanView';
 import { UserProfileRequest, AQIData, ActionPlanResponse } from './types';
 
-const API_BASE = '/api/v1';
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV ? 'http://127.0.0.1:8000/api/v1' : '/api/v1');
 
 const DEFAULT_PROFILE: UserProfileRequest = {
   city: 'Delhi',
