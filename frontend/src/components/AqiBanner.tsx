@@ -1,80 +1,39 @@
 import React from 'react';
+import { getSeverityConfig } from '../constants/aqiThresholds';
 import { AQIData } from '../types';
 
+/**
+ * Props for the AqiBanner component.
+ */
 interface AqiBannerProps {
+  /** Real-time or fallback atmospheric telemetry data */
   aqiData: AQIData | null;
+  /** Telemetry refresh loading state */
   loading: boolean;
+  /** Optional callback to trigger telemetry refresh */
   onRefresh?: () => void;
 }
 
+/**
+ * AqiBanner displays real-time PM2.5, PM10, AQI index, and atmospheric metrics.
+ * Ensures WCAG 2.1 AA contrast compliance and pairs color with explicit text & icons.
+ */
 export const AqiBanner: React.FC<AqiBannerProps> = ({ aqiData, loading, onRefresh }) => {
   if (loading && !aqiData) {
     return (
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 animate-pulse text-center space-y-3">
-        <div className="h-5 w-48 bg-slate-200 rounded mx-auto"></div>
-        <div className="h-12 w-32 bg-slate-200 rounded mx-auto"></div>
-        <div className="h-8 w-64 bg-slate-200 rounded mx-auto"></div>
+      <div
+        role="status"
+        aria-label="Loading air quality data"
+        className="bg-white rounded-2xl p-6 border border-slate-200 animate-pulse text-center space-y-3"
+      >
+        <div className="h-5 w-48 bg-slate-200 rounded mx-auto" />
+        <div className="h-12 w-32 bg-slate-200 rounded mx-auto" />
+        <div className="h-8 w-64 bg-slate-200 rounded mx-auto" />
       </div>
     );
   }
 
   if (!aqiData) return null;
-
-  // Accessible color & status icon configuration ensuring color is never the sole indicator
-  const getSeverityConfig = (aqi: number) => {
-    if (aqi <= 50) {
-      return {
-        badgeText: 'Good',
-        bgColor: 'bg-emerald-900 text-emerald-50 border-emerald-700',
-        badgeBg: 'bg-emerald-800 text-emerald-100',
-        statusIcon: '✅',
-        label: 'Air quality is satisfactory; safe for all outdoor activities.',
-      };
-    }
-    if (aqi <= 100) {
-      return {
-        badgeText: 'Moderate',
-        bgColor: 'bg-amber-900 text-amber-50 border-amber-700',
-        badgeBg: 'bg-amber-800 text-amber-100',
-        statusIcon: '⚠️',
-        label: 'Acceptable air quality; unusually sensitive people should consider limiting prolonged outdoor exertion.',
-      };
-    }
-    if (aqi <= 150) {
-      return {
-        badgeText: 'Unhealthy for Sensitive Groups',
-        bgColor: 'bg-orange-900 text-orange-50 border-orange-700',
-        badgeBg: 'bg-orange-800 text-orange-100',
-        statusIcon: '⚠️',
-        label: 'Members of sensitive groups (children, elderly, asthma) may experience health effects.',
-      };
-    }
-    if (aqi <= 200) {
-      return {
-        badgeText: 'Unhealthy',
-        bgColor: 'bg-red-950 text-red-50 border-red-800',
-        badgeBg: 'bg-red-900 text-red-100',
-        statusIcon: '⛔',
-        label: 'Everyone may begin to experience adverse health effects; sensitive groups experience more serious effects.',
-      };
-    }
-    if (aqi <= 300) {
-      return {
-        badgeText: 'Very Unhealthy',
-        bgColor: 'bg-purple-950 text-purple-50 border-purple-800',
-        badgeBg: 'bg-purple-900 text-purple-100',
-        statusIcon: '🚨',
-        label: 'Health alert: The risk of health effects is increased for all family members.',
-      };
-    }
-    return {
-      badgeText: 'Severe / Hazardous',
-      bgColor: 'bg-rose-950 text-rose-50 border-rose-800',
-      badgeBg: 'bg-rose-900 text-rose-100',
-      statusIcon: '🛑',
-      label: 'Emergency health warning: Entire population is more likely to be seriously affected. Seal windows immediately.',
-    };
-  };
 
   const severity = getSeverityConfig(aqiData.us_aqi);
 
@@ -91,9 +50,9 @@ export const AqiBanner: React.FC<AqiBannerProps> = ({ aqiData, loading, onRefres
           </span>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base sm:text-lg font-black tracking-tight">
+              <h2 className="text-base sm:text-lg font-black tracking-tight text-white">
                 {aqiData.city}: {severity.badgeText} - {aqiData.us_aqi} AQI
-              </h3>
+              </h2>
               {aqiData.is_fallback && (
                 <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-400 text-slate-950">
                   Offline Fallback

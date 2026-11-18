@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from httpx import ASGITransport, AsyncClient
+
 from app.core.config import get_settings
 from app.core.security import detect_prompt_injection, sanitize_input, wrap_user_input
 from app.main import app
@@ -14,7 +16,6 @@ from app.services.impact_math import (
     calculate_impact_metrics,
     calculate_pm25_inhalation_reduction,
 )
-from httpx import ASGITransport, AsyncClient
 
 settings = get_settings()
 
@@ -311,3 +312,74 @@ async def test_root_endpoint_metadata():
         body = response.json()
         assert "VayuMitra" in body["message"]
         assert body["docs"] == "/docs"
+
+
+def test_extreme_aqi_greater_than_500_capping():
+    """13. Test piecewise linear calculator bounds extreme hazardous PM2.5 > 500 to 500 AQI."""
+    from app.services.aqi_calc import calculate_us_aqi, get_aqi_category
+
+    aqi_extreme = calculate_us_aqi(pm25=850.0)
+    assert aqi_extreme == 500
+    category = get_aqi_category(aqi_extreme)
+    assert category == "Severe / Hazardous"
+
+    aqi_zero = calculate_us_aqi(pm25=-5.0)
+    assert aqi_zero == 0
+
+
+@pytest.mark.asyncio
+async def test_empty_or_whitespace_city_rejected():
+    """14. Test empty or whitespace-only city input is rejected with HTTP 422."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = {
+            "city": "    ",
+            "home_type": "apartment",
+            "commute_mode": "two_wheeler",
+            "cooking_fuel": "lpg",
+        }
+        response = await client.post("/api/v1/generate-plan", json=payload)
+        assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_malformed_gemini_json_fallback():
+    """15. Test Gemini service gracefully catches malformed JSON and falls back without 500."""
+    from app.models.schemas import AQIData, UserProfileRequest
+    from app.services.gemini_service import generate_action_plan
+
+    mock_resp = MagicMock()
+    mock_resp.text = "{malformed: not valid json ...}"
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = mock_resp
+
+    profile = UserProfileRequest(city="TestMalformedCity")
+    aqi_data = AQIData(
+        city="TestMalformedCity",
+        latitude=28.6,
+        longitude=77.2,
+        pm2_5=200.0,
+        pm10=300.0,
+        us_aqi=250,
+        category="Very Unhealthy",
+    )
+
+    with patch("google.genai.Client", return_value=mock_client), patch.object(
+        settings, "GEMINI_API_KEY", "dummy_key"
+    ):
+        plan = await generate_action_plan(profile, aqi_data)
+        assert plan is not None
+        assert plan.source == "deterministic-expert-engine"
+
+
+@pytest.mark.asyncio
+async def test_comprehensive_csp_and_security_headers():
+    """16. Test Content-Security-Policy, Referrer-Policy, and Permissions-Policy headers."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/health")
+        assert response.status_code == 200
+        assert "default-src 'self'" in response.headers.get("Content-Security-Policy", "")
+        assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+        assert "geolocation=()" in response.headers.get("Permissions-Policy", "")

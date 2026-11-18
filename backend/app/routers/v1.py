@@ -3,14 +3,15 @@
 import logging
 from datetime import UTC, datetime
 
+from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel
+
 from app.core.cache import aqi_cache, plan_cache
 from app.core.config import get_settings
 from app.core.security import detect_prompt_injection, limiter, sanitize_input
 from app.models.schemas import ActionPlanResponse, AQIData, UserProfileRequest
 from app.services.aqi_service import get_city_aqi
 from app.services.gemini_service import generate_action_plan
-from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -31,7 +32,14 @@ class HealthStatus(BaseModel):
 @router.get("/health", response_model=HealthStatus)
 @limiter.limit("60/minute")
 async def health_check(request: Request) -> HealthStatus:
-    """Return system health status and configuration."""
+    """Return system health status and configuration diagnostics.
+
+    Args:
+        request: FastAPI HTTP incoming request.
+
+    Returns:
+        HealthStatus containing runtime state, cache sizes, and telemetry configurations.
+    """
     return HealthStatus(
         status="healthy",
         project=settings.PROJECT_NAME,
@@ -47,7 +55,18 @@ async def health_check(request: Request) -> HealthStatus:
 @router.get("/aqi/{city}", response_model=AQIData)
 @limiter.limit("60/minute")
 async def get_aqi_by_city(city: str, request: Request) -> AQIData:
-    """Fetch real-time PM2.5, PM10, and US AQI for any city via Open-Meteo."""
+    """Fetch real-time PM2.5, PM10, and US AQI for any city via Open-Meteo.
+
+    Args:
+        city: City or locality name to query.
+        request: FastAPI HTTP incoming request.
+
+    Returns:
+        AQIData populated with real-time or fallback atmospheric measurements.
+
+    Raises:
+        HTTPException: If city parameter fails sanitization or minimum length validation.
+    """
     clean_city = sanitize_input(city, max_length=100)
     if not clean_city or len(clean_city) < 2:
         raise HTTPException(
@@ -62,18 +81,24 @@ async def get_aqi_by_city(city: str, request: Request) -> AQIData:
 async def create_action_plan(
     profile: UserProfileRequest, request: Request
 ) -> ActionPlanResponse:
+    """Generate structured GenAI action plan and indoor hacks for a household profile.
+
+    Args:
+        profile: Validated household profile request.
+        request: FastAPI HTTP incoming request.
+
+    Returns:
+        ActionPlanResponse with diurnal schedule, budget hacks, metrics, and RWA circular.
+
+    Raises:
+        HTTPException: If prompt injection patterns or adversarial text is detected.
     """
-    Generate structured GenAI action plan and indoor hacks
-    tailored to the user's location, home type, commute, and sensitivities.
-    """
-    # Prompt injection check
     if detect_prompt_injection(profile.city):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid input detected. Please provide a standard city or locality name.",
         )
 
-    # Sanitize user inputs
     profile.city = sanitize_input(profile.city, max_length=100)
     profile.home_type = sanitize_input(profile.home_type, max_length=50)
     profile.commute_mode = sanitize_input(profile.commute_mode, max_length=50)
@@ -82,8 +107,5 @@ async def create_action_plan(
         sanitize_input(s, max_length=50) for s in profile.sensitive_members
     ]
 
-    # Fetch live or cached AQI telemetry for the city
     aqi_data = await get_city_aqi(profile.city)
-
-    # Generate plan via Gemini or robust dynamic fallback engine
     return await generate_action_plan(profile, aqi_data)

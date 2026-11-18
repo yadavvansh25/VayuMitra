@@ -1,47 +1,82 @@
-"""Deterministic mathematical calculator for CO2 savings and personal PM2.5 inhalation reduction."""
+"""Deterministic mathematical engine for personal health and carbon reduction impact.
 
+This module models 24-hour time-weighted microenvironmental particulate inhalation
+(Home, Workplace, Commute) and computes transport emissions savings according to
+IPCC/EPA factors and Berkeley Earth cigarette equivalence.
+"""
 
+from typing import Final
+
+from app.core.constants import (
+    BERKELEY_EARTH_PM25_PER_CIGARETTE,
+    BUILDING_INFILTRATION_FACTORS,
+    CO2_EMISSIONS_KG_PER_KM,
+    COMMUTE_EXPOSURE_MULTIPLIERS,
+    COOKING_EMISSIONS_UG_M3,
+)
 from app.models.schemas import ImpactMetrics, UserProfileRequest
 
-# Berkeley Earth equivalent: 1 cigarette/day ≈ 22 ug/m3 24h average exposure
-BERKELEY_EARTH_PM25_PER_CIGARETTE = 22.0
-
-# IPCC & EPA CO2 emissions factors (kg CO2 per passenger-km)
-CO2_EMISSION_PER_KM = {
-    "car": 0.175,           # Average petrol/diesel passenger car
-    "two_wheeler": 0.048,   # 100-150cc scooter / motorbike
-    "public_transit": 0.038,# Bus / electric metro per passenger-km
-    "wfh": 0.0,
-    "walk_bicycle": 0.0,
-}
-
-# Roadside particulate concentration multiplier relative to ambient PM2.5
-COMMUTE_EXPOSURE_FACTORS = {
-    "two_wheeler": 1.85,    # Direct exposure to tailpipe plumes
-    "walk_bicycle": 1.70,   # Elevated breathing rate roadside
-    "public_transit": 0.95, # Bus / metro cabin
-    "car": 0.50,            # Vehicle cabin with AC filter
-    "wfh": 0.0,
-}
+DEFAULT_ROUND_TRIP_KM: Final[float] = 25.0
+HOURS_HOME: Final[float] = 15.0
+HOURS_WORK: Final[float] = 7.0
+HOURS_COMMUTE: Final[float] = 2.0
+TOTAL_DAY_HOURS: Final[float] = 24.0
 
 
-def calculate_commute_co2_savings(commute_mode: str, round_trip_km: float = 25.0) -> float:
-    """
-    Calculate deterministic daily CO2 emissions saved in kg by shifting
-    to electric public transit or carpooling/WFH.
+def calculate_commute_co2_savings(commute_mode: str, round_trip_km: float = DEFAULT_ROUND_TRIP_KM) -> float:
+    """Calculate daily carbon dioxide emissions saved in kg.
+
+    Estimates CO2 reductions achieved by switching from fossil-fuel transport
+    to electric public transit or telecommuting.
+
+    Args:
+        commute_mode: Current baseline mode ('car', 'two_wheeler', 'wfh', etc.).
+        round_trip_km: Estimated daily round-trip commute distance.
+
+    Returns:
+        Estimated daily kilograms of CO2 emissions saved (bounded to min 0.65 kg).
     """
     mode = commute_mode.lower().strip()
     if mode == "car":
-        # Shifting from solo car to transit saves (0.175 - 0.038) kg CO2/km
-        savings = round_trip_km * (CO2_EMISSION_PER_KM["car"] - CO2_EMISSION_PER_KM["public_transit"])
+        delta_factor = CO2_EMISSIONS_KG_PER_KM["car"] - CO2_EMISSIONS_KG_PER_KM["public_transit"]
+        savings = round_trip_km * delta_factor
     elif mode == "two_wheeler":
-        # Shifting from two-wheeler to electric transit saves (0.048 - 0.020) kg CO2/km
-        savings = round_trip_km * 0.028
+        savings = round_trip_km * (CO2_EMISSIONS_KG_PER_KM["two_wheeler"] - 0.020)
     else:
-        # Base lifestyle and anti-idling efficiency savings
         savings = 0.85
 
     return round(max(0.65, savings), 2)
+
+
+def _get_home_baseline(ambient_pm25: float, home_type: str, cooking_fuel: str) -> tuple[float, float]:
+    """Calculate baseline home infiltration and cooking particulate concentrations.
+
+    Args:
+        ambient_pm25: Ambient outdoor PM2.5 concentration in µg/m³.
+        home_type: Residential structural design key.
+        cooking_fuel: Fuel type for kitchen cooking.
+
+    Returns:
+        Tuple of (indoor_ambient_pm25, cooking_addon_pm25).
+    """
+    infiltration = BUILDING_INFILTRATION_FACTORS.get(home_type, 0.75)
+    indoor_ambient = ambient_pm25 * infiltration
+    cooking_addon = COOKING_EMISSIONS_UG_M3.get(cooking_fuel, 20.0)
+    return indoor_ambient, cooking_addon
+
+
+def _time_weight_exposure(home: float, work: float, commute: float) -> float:
+    """Compute 24-hour time-weighted average PM2.5 exposure.
+
+    Args:
+        home: Average concentration during 15h home microenvironment.
+        work: Average concentration during 7h workplace microenvironment.
+        commute: Average concentration during 2h commute microenvironment.
+
+    Returns:
+        24-hour weighted concentration in µg/m³.
+    """
+    return ((home * HOURS_HOME) + (work * HOURS_WORK) + (commute * HOURS_COMMUTE)) / TOTAL_DAY_HOURS
 
 
 def calculate_pm25_inhalation_reduction(
@@ -52,53 +87,36 @@ def calculate_pm25_inhalation_reduction(
     cooking_fuel: str = "lpg",
     ventilation_hours_midday: float = 2.0,
 ) -> tuple[float, float, float]:
-    """
-    Calculate (baseline_pm25_ug_m3, mitigated_pm25_ug_m3, reduction_percentage).
-    Based on time-weighted microenvironments (15h Home, 7h Workplace, 2h Commute).
-    """
-    sensitive_members = sensitive_members or []
-    home_type = home_type.lower()
-    commute_mode = commute_mode.lower()
-    cooking_fuel = cooking_fuel.lower()
+    """Calculate personal inhaled PM2.5 reduction using time-weighted microenvironments.
 
-    # 1. Baseline Indoor Home Exposure
-    # Building envelope infiltration: 0.70 for apartments, 0.82 for houses
-    infiltration = 0.70 if "apartment" in home_type else 0.82
-    indoor_ambient = ambient_pm25 * infiltration
+    Args:
+        ambient_pm25: Ambient outdoor PM2.5 concentration in µg/m³.
+        home_type: Architecture structure ('apartment', 'independent_house', 'villa').
+        sensitive_members: High-risk group members in the household.
+        commute_mode: Mode of travel ('two_wheeler', 'car', 'public_transit', 'wfh').
+        cooking_fuel: Cooking fuel category ('lpg', 'png', 'electric_induction', etc.).
+        ventilation_hours_midday: Midday ventilation window duration.
 
-    # Cooking source additions
-    cooking_addon = 20.0 if "lpg" in cooking_fuel else (85.0 if "biomass" in cooking_fuel else 5.0)
+    Returns:
+        Tuple of (baseline_pm25_ug_m3, mitigated_pm25_ug_m3, reduction_percentage).
+    """
+    indoor_ambient, cooking_addon = _get_home_baseline(ambient_pm25, home_type.lower(), cooking_fuel.lower())
     baseline_home = indoor_ambient + cooking_addon
 
-    # 2. Baseline Commute Exposure
-    commute_factor = COMMUTE_EXPOSURE_FACTORS.get(commute_mode, 1.0)
-    baseline_commute = ambient_pm25 * commute_factor
-
-    # 3. Baseline Work/School Exposure
+    commute_multiplier = COMMUTE_EXPOSURE_MULTIPLIERS.get(commute_mode.lower(), 1.0)
+    baseline_commute = ambient_pm25 * commute_multiplier
     baseline_work = ambient_pm25 * 0.65
 
-    # 24h Time-Weighted Baseline Exposure
-    baseline_weighted = (
-        (baseline_home * 15.0) +
-        (baseline_work * 7.0) +
-        (baseline_commute * 2.0)
-    ) / 24.0
+    baseline_weighted = _time_weight_exposure(baseline_home, baseline_work, baseline_commute)
 
-    # 4. Mitigated Exposure (With VayuMitra protocol)
-    # - Midday controlled ventilation + DIY Box filter drops indoor PM2.5 by ~75%
+    # Mitigated state with DIY filtration and N95 protection
     mitigated_home = (indoor_ambient * 0.22) + (cooking_addon * 0.25)
-    # - N95 mask on commute eliminates 92% of particulate inhalation
     mitigated_commute = baseline_commute * 0.08
     mitigated_work = baseline_work * 0.70
 
-    mitigated_weighted = (
-        (mitigated_home * 15.0) +
-        (mitigated_work * 7.0) +
-        (mitigated_commute * 2.0)
-    ) / 24.0
-
-    # Ensure bounds
+    mitigated_weighted = _time_weight_exposure(mitigated_home, mitigated_work, mitigated_commute)
     mitigated_weighted = max(10.0, min(baseline_weighted * 0.80, mitigated_weighted))
+
     reduction_pct = ((baseline_weighted - mitigated_weighted) / max(1.0, baseline_weighted)) * 100.0
 
     return (
@@ -108,10 +126,16 @@ def calculate_pm25_inhalation_reduction(
     )
 
 
-def calculate_impact_metrics(
-    profile: UserProfileRequest, ambient_pm25: float
-) -> ImpactMetrics:
-    """Calculate full deterministic ImpactMetrics model."""
+def calculate_impact_metrics(profile: UserProfileRequest, ambient_pm25: float) -> ImpactMetrics:
+    """Generate structured personal health and carbon reduction metrics.
+
+    Args:
+        profile: Validated household profile request.
+        ambient_pm25: Current outdoor PM2.5 concentration in µg/m³.
+
+    Returns:
+        ImpactMetrics instance populated with validated deterministic values.
+    """
     base_pm25, mit_pm25, red_pct = calculate_pm25_inhalation_reduction(
         ambient_pm25=ambient_pm25,
         home_type=profile.home_type,
@@ -121,10 +145,9 @@ def calculate_impact_metrics(
         ventilation_hours_midday=2.0,
     )
 
-    daily_co2 = calculate_commute_co2_savings(profile.commute_mode, round_trip_km=25.0)
+    daily_co2 = calculate_commute_co2_savings(profile.commute_mode, round_trip_km=DEFAULT_ROUND_TRIP_KM)
     monthly_co2 = round(daily_co2 * 30.0, 1)
 
-    # Berkeley Earth cigarette equivalence avoided
     delta_pm25 = max(0.0, base_pm25 - mit_pm25)
     cigs_avoided = round(delta_pm25 / BERKELEY_EARTH_PM25_PER_CIGARETTE, 1)
 

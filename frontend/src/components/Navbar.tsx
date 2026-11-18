@@ -1,13 +1,21 @@
 import React from 'react';
+import { POPULAR_CITIES } from '../constants/aqiThresholds';
 
+/**
+ * Props for the Navbar component.
+ */
 interface NavbarProps {
+  /** Currently selected city name */
   currentCity?: string;
+  /** Callback invoked when a user clicks a city hotspot quick-select */
   onCityQuickSelect?: (city: string) => void;
 }
 
+/**
+ * Navbar renders semantic `<header>` and `<nav>` landmarks, brand identity,
+ * regional hotspot buttons, and live system status indicators.
+ */
 export const Navbar: React.FC<NavbarProps> = ({ currentCity, onCityQuickSelect }) => {
-  const popularCities = ['Delhi', 'Gurugram', 'Noida', 'Mumbai', 'Lahore'];
-
   return (
     <header className="sticky top-0 z-40 w-full bg-slate-900 border-b border-slate-800 text-white shadow-md">
       <nav
@@ -41,13 +49,14 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, onCityQuickSelect }
         {onCityQuickSelect && (
           <div className="hidden md:flex items-center gap-1.5 text-xs">
             <span className="text-slate-400 font-medium mr-1">Hotspots:</span>
-            {popularCities.map((c) => {
+            {POPULAR_CITIES.map((c) => {
               const isSelected = currentCity?.toLowerCase() === c.toLowerCase();
               return (
                 <button
                   key={c}
                   type="button"
                   onClick={() => onCityQuickSelect(c)}
+                  aria-pressed={isSelected}
                   className={`px-2.5 py-1 rounded-md font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 cursor-pointer ${
                     isSelected
                       ? 'bg-teal-500 text-slate-950 shadow-xs'
@@ -69,8 +78,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, onCityQuickSelect }
             role="status"
             aria-live="polite"
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true"></span>
-            <span className="font-medium text-slate-200">Open-Meteo Connected</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
+            <span className="hidden sm:inline">Telemetry:</span>
+            <span className="font-semibold text-emerald-400">Open-Meteo Active</span>
           </div>
         </div>
       </nav>

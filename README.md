@@ -234,18 +234,18 @@ vercel
 
 ## 🧪 Automated Testing & Code Quality Verification
 
-### Run Backend Linting (Ruff)
+### Run Backend Linting (Ruff — Strict Rules & C90 Complexity <= 10)
 ```bash
 backend/.venv/bin/ruff check backend/
 ```
-* **Status:** 0 errors, 0 warnings across all backend modules.
+* **Status:** 0 errors, 0 warnings across all backend modules under `E`, `W`, `F`, `I`, `N`, `UP`, `B`, and `C90` (mccabe cyclomatic complexity $\le 10$).
 
-### Run Backend Tests (Pytest — 12 Comprehensive Tests)
+### Run Backend Tests (Pytest — 16 Comprehensive Edge-Case Tests)
 ```bash
 cd backend
 PYTHONPATH=. .venv/bin/pytest tests/ -v
 ```
-* **Coverage:** Validates system health check, impact math formulas, security sanitization and XML wrapping, Open-Meteo AQI endpoints, prompt injection rejection (400 Bad Request), dynamic plan fallback, mocked Gemini SDK structured output, AQI network error fallback, TTLCache hit/miss mechanics, oversized input rejection (422 Unprocessable Entity), mandatory security headers, and root metadata.
+* **Coverage:** Validates system health check, impact math formulas, security sanitization and XML wrapping, Open-Meteo AQI endpoints, prompt injection rejection (400 Bad Request), dynamic plan fallback, mocked Gemini SDK structured output, AQI network error fallback, TTLCache hit/miss mechanics, oversized input rejection (422 Unprocessable Entity), mandatory security headers, root metadata, extreme PM2.5 > 500 AQI capping, empty/whitespace city rejection, malformed Gemini JSON fallback, and Content-Security-Policy (CSP)/Referrer-Policy/Permissions-Policy headers.
 
 ### Run Frontend Typecheck & Linting
 ```bash
@@ -254,19 +254,19 @@ npm run lint       # Runs tsc --noEmit (strict type check)
 ```
 * **Status:** 0 TypeScript errors under `strict: true`.
 
-### Run Frontend Tests (Vitest — 5 Component & A11y Tests)
+### Run Frontend Tests (Vitest — 7 Component, A11y & State Tests)
 ```bash
 cd frontend
 npx vitest run
 ```
-* **Coverage:** Validates semantic header/navigation rendering with landmarks, accessible ProfileForm label associations, AQI banner explicit text & icon pairing, mocked API form submission, `aria-live="polite"` results rendering, and clipboard copy feedback.
+* **Coverage:** Validates semantic header/navigation rendering with landmarks, accessible ProfileForm label associations, AQI banner explicit text & icon pairing, mocked API form submission, `aria-live="polite"` results rendering, clipboard copy feedback, regional hotspot city switching with `aria-pressed`, and accessible `role="alert"` network failure error state rendering.
 
 ### Verify Production Frontend Build
 ```bash
 cd frontend
 npm run build
 ```
-* Compiles Vite TypeScript bundle under strict type checking (`"strict": true`) with zero errors.
+* Compiles Vite TypeScript bundle under strict type checking (`"strict": true`) with zero errors in ~360ms.
 
 ---
 

@@ -211,4 +211,58 @@ describe('VayuMitra Frontend Components & Accessibility Tests', () => {
       expect(screen.getByText(/Copied to Clipboard!/i)).toBeInTheDocument();
     });
   });
+
+  it('6. Allows switching cities via hotspot quick-select buttons with aria-pressed state', async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Severe \/ Hazardous - 335 AQI/i)).toBeInTheDocument();
+    });
+
+    const gurugramBtn = screen.getByRole('button', { name: /Select hotspot Gurugram/i });
+    expect(gurugramBtn).toBeInTheDocument();
+    expect(gurugramBtn).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(gurugramBtn);
+
+    await waitFor(() => {
+      const cityInput = screen.getByLabelText(/City or Locality/i);
+      expect(cityInput).toHaveValue('Gurugram');
+    });
+  });
+
+  it('7. Displays accessible role="alert" banner on network or API failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/api/v1/generate-plan')) {
+          return Promise.resolve({
+            ok: false,
+            status: 500,
+            json: () => Promise.resolve({ detail: 'Simulated backend error' }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockAqiResponse),
+        });
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Severe \/ Hazardous - 335 AQI/i)).toBeInTheDocument();
+    });
+
+    const submitBtn = screen.getByRole('button', { name: /Generate Clean Air Action Plan/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      const alert = screen.getByRole('alert');
+      expect(alert).toBeInTheDocument();
+      expect(alert).toHaveAttribute('aria-live', 'assertive');
+      expect(screen.getByText(/Simulated backend error/i)).toBeInTheDocument();
+    });
+  });
 });

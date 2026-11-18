@@ -137,6 +137,7 @@ export const App: React.FC = () => {
         {error && (
           <div
             role="alert"
+            aria-live="assertive"
             className="p-4 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-sm font-semibold flex items-center justify-between gap-3 shadow-xs"
           >
             <div className="flex items-center gap-2">
